@@ -7,7 +7,7 @@ namespace TodoApi.Controllers;
 [Route("api/admin")]
 public class AdminController : ControllerBase
 {
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = "AdminOnly")]
     [HttpGet("dashboard")]
     public IActionResult Dashboard()
     {

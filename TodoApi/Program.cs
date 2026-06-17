@@ -69,7 +69,12 @@ builder.Services
             };
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy(
+        "AdminOnly",
+        policy => policy.RequireRole("Admin"));
+});
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
 {
