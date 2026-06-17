@@ -1,0 +1,10 @@
+bin/
+obj/
+
+logs/
+
+.idea/
+
+*.db
+*.db-shm
+*.db-wal

@@ -1,4 +1,6 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Asp.Versioning;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Swashbuckle.AspNetCore.Annotations;
 using TodoApi.Common;
 using TodoApi.DTOs;
@@ -7,7 +9,9 @@ using TodoApi.Services;
 namespace TodoApi.Controllers;
 
 [ApiController]
-[Route("api/todos")]
+[Authorize]
+[ApiVersion("1.0")]
+[Route("api/v{version:apiVersion}/[controller]")]
 public class TodosController : ControllerBase
 {
     private readonly ITodoService _service;
