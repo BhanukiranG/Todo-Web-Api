@@ -5,9 +5,13 @@ using FluentValidation;
 using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using Serilog;
 using TodoApi.Data;
 using TodoApi.Middleware;
@@ -21,10 +25,37 @@ Log.Logger = new LoggerConfiguration()
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(resource =>
+        resource.AddService("TodoApi"))
+    .WithTracing(tracing =>
+    {
+        tracing
+            .AddAspNetCoreInstrumentation()
+            .AddHttpClientInstrumentation()
+            .AddOtlpExporter(options =>
+            {
+                options.Endpoint =
+                    new Uri("http://jaeger:4317");
+            });
+    })
+    .WithMetrics(metrics =>
+    {
+        metrics
+            .AddAspNetCoreInstrumentation()
+            .AddHttpClientInstrumentation()
+            .AddRuntimeInstrumentation()
+            .AddPrometheusExporter();
+    });
+
 builder.Host.UseSerilog((context, configuration) =>
 {
     configuration
-        .WriteTo.Console()
+        .WriteTo.Console(
+            outputTemplate:
+            "[{Timestamp:HH:mm:ss} {Level:u3}] " +
+            "[{CorrelationId}] " +
+            "{Message:lj}{NewLine}{Exception}")
         .WriteTo.File(
             "logs/log-.txt",
             rollingInterval: RollingInterval.Day);
@@ -33,6 +64,14 @@ builder.Host.UseSerilog((context, configuration) =>
 builder.Services.AddControllers();
 
 builder.Services.AddMemoryCache();
+
+builder.Services.AddStackExchangeRedisCache(options =>
+{
+    options.Configuration =
+        builder.Configuration["Redis:ConnectionString"];
+});
+
+builder.Services.AddHostedService<RefreshTokenCleanupService>();
 
 builder.Services.AddApiVersioning(options =>
     {
@@ -161,6 +200,38 @@ builder.Services.AddSwaggerGen(options =>
 
 builder.WebHost.UseUrls("http://0.0.0.0:8080");
 
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddFixedWindowLimiter(
+        "default",
+        limiterOptions =>
+        {
+            limiterOptions.PermitLimit = 100;
+
+            limiterOptions.Window = TimeSpan.FromMinutes(1);
+
+            limiterOptions.QueueLimit = 0;
+        });
+    
+    options.AddFixedWindowLimiter(
+        "login",
+        limiterOptions =>
+        {
+            limiterOptions.PermitLimit = 5;
+
+            limiterOptions.Window = TimeSpan.FromMinutes(1);
+
+            limiterOptions.QueueLimit = 0;
+        });
+    
+    options.OnRejected = async (context, token) =>
+    {
+        context.HttpContext.Response.StatusCode = 429;
+
+        await context.HttpContext.Response.WriteAsync("Too many requests", token);
+    };
+});
+
 var app = builder.Build();
 
 app.UseSwagger();
@@ -169,13 +240,18 @@ app.UseSwaggerUI(options =>
     options.SwaggerEndpoint("/swagger/v1/swagger.json", "Todo API V1");
     options.SwaggerEndpoint("/swagger/v2/swagger.json", "Todo API V2");
 });
+
 app.UseMiddleware<ExceptionMiddleware>();
+
+app.UseMiddleware<CorrelationIdMiddleware>();
 
 app.UseMiddleware<RequestLoggingMiddleware>();
 
 app.UseSerilogRequestLogging();
 
 app.UseHttpsRedirection();
+
+app.UseRateLimiter();
 
 app.UseAuthentication();
 
@@ -209,6 +285,8 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     db.Database.Migrate();
 }
+
+app.MapPrometheusScrapingEndpoint();
 
 Log.Information("Todo API starting...");
 

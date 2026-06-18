@@ -1,6 +1,7 @@
 ﻿using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Swashbuckle.AspNetCore.Annotations;
 using TodoApi.Common;
 using TodoApi.DTOs;
@@ -22,6 +23,7 @@ public class TodosController : ControllerBase
     }
 
     [HttpGet]
+    [EnableRateLimiting("default")]
     [Authorize(Policy = "TodoReadPolicy")]
     [SwaggerOperation(Summary = "Get all todos", Description = "Returns all todo items")]
     public async Task<ActionResult<List<TodoResponse>>> GetAll()

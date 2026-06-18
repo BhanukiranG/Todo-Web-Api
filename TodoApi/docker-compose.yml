@@ -10,7 +10,11 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-
+  redis:
+    image: redis:7
+    container_name: todo-redis
+    ports:
+      - "6379:6379"
   api:
     build:
       context: .

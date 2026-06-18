@@ -1,7 +1,10 @@
-﻿using Microsoft.Extensions.Caching.Memory;
+﻿using System.Text.Json;
+using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Caching.Memory;
 using TodoApi.DTOs;
 using TodoApi.Models;
 using TodoApi.Repositories;
+using TodoApi.Telemetry;
 
 namespace TodoApi.Services;
 
@@ -11,12 +14,12 @@ public class TodoService : ITodoService
     
     private readonly ILogger<TodoService> _logger;
     
-    private readonly IMemoryCache _cache;
+    private readonly IDistributedCache _cache;
 
     public TodoService(
         ITodoRepository repository,
         ILogger<TodoService> logger,
-        IMemoryCache cache)
+        IDistributedCache cache)
     {
         _repository = repository;
         _logger = logger;
@@ -25,21 +28,29 @@ public class TodoService : ITodoService
 
     public async Task<List<TodoResponse>> GetAllAsync()
     {
-        const string cacheKey = "todos";
+        var cached = await _cache.GetStringAsync("todos");
+        
+        using var activity = TelemetryConstants.ActivitySource.StartActivity("GetAllTodos");
 
-        if (_cache.TryGetValue(cacheKey, out List<TodoResponse>? cachedTodos))
+        if (!string.IsNullOrEmpty(cached))
         {
-            return cachedTodos!;
+            activity?.SetTag("cache.enabled", true);
+            return JsonSerializer.Deserialize<List<TodoResponse>>(cached)!;
         }
         
         var todos = await _repository.GetAllAsync();
         
-        _cache.Set(
-            cacheKey,
-            todos,
-            TimeSpan.FromMinutes(5));
+        await _cache.SetStringAsync(
+            "todos",
+            JsonSerializer.Serialize(todos),
+            new DistributedCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5)
+            });
         
         _logger.LogInformation("Retrieved {Count} todos from cache", todos.Count);
+        
+        activity?.SetTag("operation.type", "database");
         
         return todos.Select(x => new TodoResponse
         {
@@ -66,7 +77,7 @@ public class TodoService : ITodoService
 
         await _repository.SaveChangesAsync();
         
-        _cache.Remove("todos");
+        await _cache.RemoveAsync("todos");
         
         _logger.LogInformation("Todo created with id {TodoId}", todo.Id);
 
@@ -111,7 +122,7 @@ public class TodoService : ITodoService
 
         await _repository.SaveChangesAsync();
         
-        _cache.Remove("todos");
+        await _cache.RemoveAsync("todos");
 
         return new TodoResponse
         {
@@ -135,7 +146,7 @@ public class TodoService : ITodoService
 
         await _repository.SaveChangesAsync();
         
-        _cache.Remove("todos");
+        await _cache.RemoveAsync("todos");
 
         return true;
     }

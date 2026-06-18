@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using TodoApi.Data;
 using TodoApi.DTOs.Auth;
@@ -52,8 +53,8 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("login")]
-    public async Task<ActionResult<AuthResponse>> Login(
-        LoginRequest request)
+    [EnableRateLimiting("login")]
+    public async Task<ActionResult<AuthResponse>> Login(LoginRequest request)
     {
         var user = await _db.Users
             .FirstOrDefaultAsync(x =>
