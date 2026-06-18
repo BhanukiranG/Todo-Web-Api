@@ -1,4 +1,5 @@
-﻿using TodoApi.DTOs;
+﻿using Microsoft.Extensions.Caching.Memory;
+using TodoApi.DTOs;
 using TodoApi.Models;
 using TodoApi.Repositories;
 
@@ -9,19 +10,37 @@ public class TodoService : ITodoService
     private readonly ITodoRepository _repository;
     
     private readonly ILogger<TodoService> _logger;
+    
+    private readonly IMemoryCache _cache;
 
     public TodoService(
         ITodoRepository repository,
-        ILogger<TodoService> logger)
+        ILogger<TodoService> logger,
+        IMemoryCache cache)
     {
         _repository = repository;
         _logger = logger;
+        _cache = cache;
     }
 
     public async Task<List<TodoResponse>> GetAllAsync()
     {
-        var todos = await _repository.GetAllAsync();
+        const string cacheKey = "todos";
 
+        if (_cache.TryGetValue(cacheKey, out List<TodoResponse>? cachedTodos))
+        {
+            return cachedTodos!;
+        }
+        
+        var todos = await _repository.GetAllAsync();
+        
+        _cache.Set(
+            cacheKey,
+            todos,
+            TimeSpan.FromMinutes(5));
+        
+        _logger.LogInformation("Retrieved {Count} todos from cache", todos.Count);
+        
         return todos.Select(x => new TodoResponse
         {
             Id = x.Id,
@@ -46,6 +65,8 @@ public class TodoService : ITodoService
         await _repository.AddAsync(todo);
 
         await _repository.SaveChangesAsync();
+        
+        _cache.Remove("todos");
         
         _logger.LogInformation("Todo created with id {TodoId}", todo.Id);
 
@@ -89,6 +110,8 @@ public class TodoService : ITodoService
         _repository.Update(todo);
 
         await _repository.SaveChangesAsync();
+        
+        _cache.Remove("todos");
 
         return new TodoResponse
         {
@@ -111,6 +134,8 @@ public class TodoService : ITodoService
         _repository.Delete(todo);
 
         await _repository.SaveChangesAsync();
+        
+        _cache.Remove("todos");
 
         return true;
     }

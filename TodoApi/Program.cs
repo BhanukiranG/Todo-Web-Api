@@ -32,6 +32,8 @@ builder.Host.UseSerilog((context, configuration) =>
 
 builder.Services.AddControllers();
 
+builder.Services.AddMemoryCache();
+
 builder.Services.AddApiVersioning(options =>
     {
         options.DefaultApiVersion = new ApiVersion(1, 0);
