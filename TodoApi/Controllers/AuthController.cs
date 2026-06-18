@@ -1,3 +1,5 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TodoApi.Data;
@@ -72,13 +74,104 @@ public class AuthController : ControllerBase
             return Unauthorized();
         }
 
-        var token =
-            _jwtService.GenerateToken(user);
+        var token = _jwtService.GenerateToken(user);
+
+        var refreshToken = _jwtService.GenerateRefreshToken();
+
+        _db.RefreshTokens.Add(new RefreshToken
+        {
+            Id = Guid.NewGuid(),
+            Token = refreshToken,
+            UserId = user.Id,
+            CreatedAt = DateTime.UtcNow,
+            ExpiresAt = DateTime.UtcNow.AddDays(7),
+            IsRevoked = false
+        });
+
+        await _db.SaveChangesAsync();
 
         return Ok(new AuthResponse
         {
-            Email = user.Email,
-            Token = token
+            Token = token,
+            RefreshToken = refreshToken,
+            Email = user.Email
         });
+    }
+
+    [HttpPost("refresh")]
+    public async Task<IActionResult> RefreshToken(RefreshTokenRequest request)
+    {
+        var storedToken = await _db.RefreshTokens
+            .Include(x => x.User)
+            .FirstOrDefaultAsync(x => x.Token == request.RefreshToken);
+
+        if (storedToken == null)
+        {
+            return Unauthorized("Invalid refresh token");
+        }
+
+        if (storedToken.IsRevoked)
+        {
+            return Unauthorized("Token revoked");
+        }
+
+        if (storedToken.ExpiresAt < DateTime.UtcNow)
+        {
+            return Unauthorized("Token expired");
+        }
+
+        var newAccessToken =
+            _jwtService.GenerateToken(storedToken.User);
+
+        return Ok(new AuthResponse
+        {
+            Token = newAccessToken,
+            RefreshToken = storedToken.Token,
+            Email = storedToken.User.Email
+        });
+    }
+
+    [HttpPost("logout")]
+    [Authorize]
+    public async Task<IActionResult> Logout(RefreshTokenRequest request)
+    {
+        var token = await _db.RefreshTokens
+            .FirstOrDefaultAsync(x =>
+                x.Token == request.RefreshToken);
+
+        if (token == null)
+        {
+            return NotFound();
+        }
+
+        token.IsRevoked = true;
+        token.RevokedAt = DateTime.UtcNow;
+
+        await _db.SaveChangesAsync();
+
+        return Ok("Logged out");
+    }
+    
+    [HttpPost("logout-all")]
+    [Authorize]
+    public async Task<IActionResult> LogoutAll()
+    {
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+        var tokens = await _db.RefreshTokens
+            .Where(x =>
+                x.UserId == Guid.Parse(userId!)
+                && !x.IsRevoked)
+            .ToListAsync();
+
+        foreach (var token in tokens)
+        {
+            token.IsRevoked = true;
+            token.RevokedAt = DateTime.UtcNow;
+        }
+
+        await _db.SaveChangesAsync();
+
+        return Ok();
     }
 }

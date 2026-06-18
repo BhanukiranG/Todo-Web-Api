@@ -1,5 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using TodoApi.Data;
+using TodoApi.DTOs;
 
 namespace TodoApi.Controllers;
 
@@ -7,10 +10,28 @@ namespace TodoApi.Controllers;
 [Route("api/admin")]
 public class AdminController : ControllerBase
 {
-    [Authorize(Policy = "AdminOnly")]
-    [HttpGet("dashboard")]
-    public IActionResult Dashboard()
+    private readonly ApplicationDbContext _db;
+
+    public AdminController(ApplicationDbContext db)
     {
-        return Ok("Welcome Admin");
+        _db = db;
+    }
+
+    [HttpPut("role")]
+    public async Task<IActionResult> UpdateRole(UpdateRoleRequest request)
+    {
+        var user = await _db.Users
+            .FirstOrDefaultAsync(x => x.Email == request.Email);
+
+        if (user == null)
+        {
+            return NotFound();
+        }
+
+        user.Role = request.Role;
+
+        await _db.SaveChangesAsync();
+
+        return Ok();
     }
 }

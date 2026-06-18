@@ -72,8 +72,25 @@ builder.Services
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy(
-        "AdminOnly",
-        policy => policy.RequireRole("Admin"));
+        "TodoReadPolicy",
+        policy =>
+        {
+            policy.RequireClaim("Permission", "Todos.Read");
+        });
+
+    options.AddPolicy(
+        "TodoCreatePolicy",
+        policy =>
+        {
+            policy.RequireClaim("Permission", "Todos.Create");
+        });
+
+    options.AddPolicy(
+        "TodoDeletePolicy",
+        policy =>
+        {
+            policy.RequireClaim("Permission", "Todos.Delete");
+        });
 });
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>

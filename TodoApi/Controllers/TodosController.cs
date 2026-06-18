@@ -22,6 +22,7 @@ public class TodosController : ControllerBase
     }
 
     [HttpGet]
+    [Authorize(Policy = "TodoReadPolicy")]
     [SwaggerOperation(Summary = "Get all todos", Description = "Returns all todo items")]
     public async Task<ActionResult<List<TodoResponse>>> GetAll()
     {
@@ -31,6 +32,7 @@ public class TodosController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Policy = "TodoCreatePolicy")]
     public async Task<ActionResult<TodoResponse>> Create(CreateTodoRequest request)
     {
         var result = await _service.CreateAsync(request);
@@ -67,6 +69,7 @@ public class TodosController : ControllerBase
     }
     
     [HttpDelete("{id:guid}")]
+    [Authorize(Policy = "TodoDeletePolicy")]
     public async Task<IActionResult> Delete(Guid id)
     {
         var deleted = await _service.DeleteAsync(id);

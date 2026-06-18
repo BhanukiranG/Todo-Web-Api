@@ -12,4 +12,6 @@ public class ApplicationDbContext : DbContext
     public DbSet<TodoItem> Todos => Set<TodoItem>();
     
     public DbSet<User> Users => Set<User>();
+    
+    public DbSet<RefreshToken> RefreshTokens { get; set; }
 }

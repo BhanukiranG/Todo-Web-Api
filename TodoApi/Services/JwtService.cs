@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 using Microsoft.IdentityModel.Tokens;
 using TodoApi.Models;
@@ -25,17 +26,25 @@ public class JwtService
             key,
             SecurityAlgorithms.HmacSha256);
 
-        var claims = new[]
+        var claims =  new List<Claim>
         {
-            new Claim(ClaimTypes.NameIdentifier,
-                user.Id.ToString()),
+            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
 
-            new Claim(ClaimTypes.Email,
-                user.Email),
+            new Claim(ClaimTypes.Email, user.Email),
 
-            new Claim(ClaimTypes.Role,
-                user.Role)
+            new Claim(ClaimTypes.Role, user.Role)
         };
+        
+        if (user.Role == "Admin")
+        {
+            claims.Add(new Claim("Permission", "Todos.Read"));
+            claims.Add(new Claim("Permission", "Todos.Create"));
+            claims.Add(new Claim("Permission", "Todos.Delete"));
+        }
+        else
+        {
+            claims.Add(new Claim("Permission", "Todos.Read"));
+        }
 
         var token = new JwtSecurityToken(
             issuer: _configuration["Jwt:Issuer"],
@@ -46,5 +55,16 @@ public class JwtService
 
         return new JwtSecurityTokenHandler()
             .WriteToken(token);
+    }
+    
+    public string GenerateRefreshToken()
+    {
+        var randomBytes = new byte[64];
+
+        using var rng = RandomNumberGenerator.Create();
+
+        rng.GetBytes(randomBytes);
+
+        return Convert.ToBase64String(randomBytes);
     }
 }
