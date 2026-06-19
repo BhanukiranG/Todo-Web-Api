@@ -1,3 +1,5 @@
+using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -23,6 +25,30 @@ public class TodoServiceTests
             _repository.Object,
             Mock.Of<ILogger<TodoService>>(),
             _cache.Object); // Added the missing IDistributedCache dependency
+    }
+
+    [Fact]
+    public async Task GetAllAsync_Should_Return_Todos_From_Database_When_Cache_Empty()
+    {
+        // Arrange
+        _cache.Setup(x => x.GetAsync("todos", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((byte[]?)null);
+
+        var todos = new List<TodoItem>
+        {
+            new TodoItem { Id = Guid.NewGuid(), Title = "Task 1", IsCompleted = false },
+            new TodoItem { Id = Guid.NewGuid(), Title = "Task 2", IsCompleted = true }
+        };
+
+        _repository.Setup(x => x.GetAllAsync()).ReturnsAsync(todos);
+
+        // Act
+        var result = await _service.GetAllAsync();
+
+        // Assert
+        Assert.Equal(2, result.Count);
+        _repository.Verify(x => x.GetAllAsync(), Times.Once);
+        _cache.Verify(x => x.SetAsync("todos", It.IsAny<byte[]>(), It.IsAny<DistributedCacheEntryOptions>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -137,5 +163,39 @@ public class TodoServiceTests
         _cache.Verify(
             x => x.RemoveAsync("todos", It.IsAny<CancellationToken>()), 
             Times.Once);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_Should_Delete_Todo_When_Exists()
+    {
+        // Arrange
+        var id = Guid.NewGuid();
+        var todo = new TodoItem { Id = id, Title = "To Delete" };
+
+        _repository.Setup(x => x.GetByIdAsync(id)).ReturnsAsync(todo);
+
+        // Act
+        var result = await _service.DeleteAsync(id);
+
+        // Assert
+        Assert.True(result);
+        _repository.Verify(x => x.Delete(todo), Times.Once);
+        _repository.Verify(x => x.SaveChangesAsync(), Times.Once);
+        _cache.Verify(x => x.RemoveAsync("todos", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_Should_Return_False_When_NotFound()
+    {
+        // Arrange
+        _repository.Setup(x => x.GetByIdAsync(It.IsAny<Guid>())).ReturnsAsync((TodoItem?)null);
+
+        // Act
+        var result = await _service.DeleteAsync(Guid.NewGuid());
+
+        // Assert
+        Assert.False(result);
+        _repository.Verify(x => x.Delete(It.IsAny<TodoItem>()), Times.Never);
+        _repository.Verify(x => x.SaveChangesAsync(), Times.Never);
     }
 }
