@@ -3,6 +3,8 @@ using System.Text.Json;
 using Asp.Versioning;
 using FluentValidation;
 using FluentValidation.AspNetCore;
+using Hangfire;
+using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.RateLimiting;
@@ -14,6 +16,7 @@ using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using Serilog;
 using TodoApi.Data;
+using TodoApi.Jobs;
 using TodoApi.Middleware;
 using TodoApi.Repositories;
 using TodoApi.Services;
@@ -36,7 +39,7 @@ builder.Services.AddOpenTelemetry()
             .AddOtlpExporter(options =>
             {
                 options.Endpoint =
-                    new Uri("http://jaeger:4317");
+                    new Uri("http://host.docker.internal:4317");
             });
     })
     .WithMetrics(metrics =>
@@ -70,8 +73,6 @@ builder.Services.AddStackExchangeRedisCache(options =>
     options.Configuration =
         builder.Configuration["Redis:ConnectionString"];
 });
-
-builder.Services.AddHostedService<RefreshTokenCleanupService>();
 
 builder.Services.AddApiVersioning(options =>
     {
@@ -134,6 +135,17 @@ builder.Services.AddAuthorization(options =>
         });
 });
 
+builder.Services.AddHangfire(config =>
+{
+    config.UsePostgreSqlStorage(options =>
+    {
+        options.UseNpgsqlConnection(
+            builder.Configuration.GetConnectionString("DefaultConnection"));
+    });
+});
+
+builder.Services.AddHangfireServer();
+
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
 {
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"));
@@ -142,6 +154,9 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 builder.Services.AddScoped<ITodoRepository, TodoRepository>();
 builder.Services.AddScoped<ITodoService, TodoService>();
 builder.Services.AddScoped<JwtService>();
+
+builder.Services.AddTransient<RefreshTokenCleanupJob>();
+builder.Services.AddTransient<HeartbeatJob>();
 
 builder.Services.AddFluentValidationAutoValidation();
 builder.Services.AddValidatorsFromAssemblyContaining<CreateTodoRequestValidator>();
@@ -257,6 +272,13 @@ app.UseAuthentication();
 
 app.UseAuthorization();
 
+app.UseHangfireDashboard(
+    "/hangfire",
+    new DashboardOptions
+    {
+        Authorization = Array.Empty<Hangfire.Dashboard.IDashboardAuthorizationFilter>()
+    });
+
 app.MapControllers();
 
 app.MapHealthChecks("/health", new HealthCheckOptions
@@ -284,6 +306,17 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     db.Database.Migrate();
+}
+
+using (var scope = app.Services.CreateScope())
+{
+    var recurringJobManager =
+        scope.ServiceProvider.GetRequiredService<IRecurringJobManager>();
+
+    recurringJobManager.AddOrUpdate<RefreshTokenCleanupJob>(
+        "refresh-token-cleanup",
+        job => job.Execute(),
+        Cron.Hourly);
 }
 
 app.MapPrometheusScrapingEndpoint();

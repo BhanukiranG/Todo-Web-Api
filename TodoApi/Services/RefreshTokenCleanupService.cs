@@ -39,7 +39,7 @@ public class RefreshTokenCleanupService : BackgroundService
                 _logger.LogInformation("Deleted {Count} expired refresh tokens", expiredTokens.Count);
             }
 
-            await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
+            await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
         }
     }
 }
