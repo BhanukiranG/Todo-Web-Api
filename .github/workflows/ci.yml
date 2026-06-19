@@ -1,0 +1,48 @@
+name: .NET CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build_and_test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET 8
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 8.0.x
+
+    - name: Restore dependencies
+      run: dotnet restore Todo.sln
+
+    - name: Build
+      run: dotnet build Todo.sln --configuration Release --no-restore
+
+    - name: Test
+      run: dotnet test Todo.sln --configuration Release --no-build --verbosity normal
+
+  deploy:
+    name: Deploy to Render
+    needs: build_and_test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+    - name: Trigger Render Deployment
+      env:
+        deploy_url: ${{ secrets.RENDER_DEPLOY_HOOK }}
+      run: |
+        if [ -z "$deploy_url" ]; then
+          echo "RENDER_DEPLOY_HOOK secret is not set! Skipping deployment."
+          exit 0
+        fi
+        echo "Triggering Render deployment..."
+        curl -X POST "$deploy_url"
