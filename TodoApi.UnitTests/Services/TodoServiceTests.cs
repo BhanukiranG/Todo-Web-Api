@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
 using Moq;
 using TodoApi.DTOs;
@@ -11,18 +11,18 @@ namespace TodoApi.UnitTests.Services;
 public class TodoServiceTests
 {
     private readonly Mock<ITodoRepository> _repository;
-    private readonly Mock<IMemoryCache> _cache;
+    private readonly Mock<IDistributedCache> _cache;
     private readonly TodoService _service;
 
     public TodoServiceTests()
     {
         _repository = new Mock<ITodoRepository>();
-        _cache = new Mock<IMemoryCache>();
+        _cache = new Mock<IDistributedCache>();
 
         _service = new TodoService(
             _repository.Object,
             Mock.Of<ILogger<TodoService>>(),
-            _cache.Object); // Added the missing IMemoryCache dependency
+            _cache.Object); // Added the missing IDistributedCache dependency
     }
 
     [Fact]
@@ -51,7 +51,7 @@ public class TodoServiceTests
             
         // Optional: Verify the cache was invalidated
         _cache.Verify(
-            x => x.Remove("todos"), 
+            x => x.RemoveAsync("todos", It.IsAny<CancellationToken>()), 
             Times.Once);
     }
 
@@ -135,7 +135,7 @@ public class TodoServiceTests
             
         // Optional: Verify the cache was invalidated
         _cache.Verify(
-            x => x.Remove("todos"), 
+            x => x.RemoveAsync("todos", It.IsAny<CancellationToken>()), 
             Times.Once);
     }
 }
