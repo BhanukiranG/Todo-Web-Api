@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -11,6 +12,7 @@ using TodoApi.Services;
 namespace TodoApi.Controllers;
 
 [ApiController]
+[ApiVersionNeutral]
 [Route("api/auth")]
 public class AuthController : ControllerBase
 {

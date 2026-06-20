@@ -1,3 +1,4 @@
+using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -7,6 +8,7 @@ using TodoApi.DTOs;
 namespace TodoApi.Controllers;
 
 [ApiController]
+[ApiVersionNeutral]
 [Route("api/admin")]
 public class AdminController : ControllerBase
 {
